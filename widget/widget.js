@@ -280,6 +280,60 @@
         if (em) fetch(`${SERVER_URL}/api/transcript`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em }) }).then(() => alert('Sent'));
     });
 
+    logVisitorInfo();
+
     init();
 
 })();
+
+
+function logVisitorInfo() {
+    // Browser & OS detection
+    const userAgent = navigator.userAgent;
+    const platform = navigator.platform;
+
+const browser = (() => {
+    const ua = navigator.userAgent;
+
+    if (ua.includes("Edg/")) return "Microsoft Edge";   // MUST be first
+    if (ua.includes("OPR/") || ua.includes("Opera")) return "Opera";
+    if (ua.includes("Brave")) return "Brave";
+    if (ua.includes("Chrome") && !ua.includes("Edg/")) return "Chrome";
+    if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari";
+    if (ua.includes("Firefox")) return "Firefox";
+
+    return "Unknown";
+})();
+
+    const os = (() => {
+        if (platform.includes("Win")) return "Windows";
+        if (platform.includes("Mac")) return "MacOS";
+        if (platform.includes("Linux")) return "Linux";
+        if (/Android/.test(userAgent)) return "Android";
+        if (/iPhone|iPad|iPod/.test(userAgent)) return "iOS";
+        return "Unknown";
+    })();
+
+    const currentPage = window.location.href;
+
+    // Fetch IP + Country
+    fetch("https://ipapi.co/json/")
+        .then(res => res.json())
+        .then(data => {
+            console.log("Visitor Info:", {
+                ip: data.ip,
+                country: data.country_name,
+                browser,
+                os,
+                currentPage
+            });
+        })
+        .catch(err => {
+            console.log("Visitor Info (partial):", {
+                browser,
+                os,
+                currentPage,
+                error: "IP lookup failed"
+            });
+        });
+}
