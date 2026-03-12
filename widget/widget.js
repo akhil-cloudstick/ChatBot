@@ -955,6 +955,22 @@
         return hours + ':' + minutes + ' ' + ampm;
     }
 
+    window.lcPauseAllMedia = function(except) {
+        if (audio && audio !== except && !audio.paused) audio.pause();
+        const allMedia = document.querySelectorAll('#lc-messages audio, #lc-messages video');
+        allMedia.forEach(m => {
+            if (m !== except && !m.paused) {
+                m.pause();
+                if (m.tagName === 'AUDIO') {
+                    const playBtn = m.previousElementSibling;
+                    if (playBtn && playBtn.querySelector('path')) {
+                        playBtn.querySelector('path').setAttribute('d', "M8 5v14l11-7z");
+                    }
+                }
+            }
+        });
+    };
+
     function addMsg(m, isHistory = false, targetContainer = null) {
         const msgsContainer = targetContainer || document.getElementById('lc-messages');
         if (!msgsContainer) return;
@@ -1044,7 +1060,7 @@
                         <div onclick="var a=this.nextElementSibling; var p=this.querySelector('path'); if(a.paused){a.play(); p.setAttribute('d', '${pausePath}');}else{a.pause(); p.setAttribute('d', '${playPath}');}" style="cursor: pointer; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: ${iconBg}; color: ${iconColor}; flex-shrink: 0; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
                             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${playPath}"/></svg>
                         </div>
-                        <audio src="${m.filePath}" style="display: none;" ontimeupdate="var p=(this.currentTime/this.duration)*100||0; this.nextElementSibling.lastElementChild.style.width=Math.min(p,100)+'%';" onended="this.previousElementSibling.querySelector('path').setAttribute('d', '${playPath}'); this.nextElementSibling.lastElementChild.style.width='0%';"></audio>
+                        <audio src="${m.filePath}" style="display: none;" onplay="window.lcPauseAllMedia(this)" ontimeupdate="var p=(this.currentTime/this.duration)*100||0; this.nextElementSibling.lastElementChild.style.width=Math.min(p,100)+'%';" onended="this.previousElementSibling.querySelector('path').setAttribute('d', '${playPath}'); this.nextElementSibling.lastElementChild.style.width='0%';"></audio>
                         <div style="width: 160px; height: 32px; position: relative; cursor: pointer;" onclick="var a=this.previousElementSibling; var r=this.getBoundingClientRect(); if(a.duration) a.currentTime=((event.clientX-r.left)/r.width)*a.duration;">
                             <div style="position: absolute; width: 100%; height: 100%; display: flex; align-items: center; gap: 2px; pointer-events: none;">
                                 ${baseBars}
@@ -1062,7 +1078,7 @@
                 fileHtml = `
                     <div class="lc-media-wrapper" style="position: relative; overflow: hidden; max-width: 100%; display: flex;" ${vidWrapAttrs}>
                         ${loaderOverlay}
-                        <video src="${m.filePath}" style="width: 100%; max-height: 250px; object-fit: cover; display: block; background: #000; cursor: pointer;" preload="metadata" onclick="this.paused ? this.play() : this.pause()" onplay="if(!${m.isUploading}) this.nextElementSibling.style.display='none'" onpause="if(!${m.isUploading}) this.nextElementSibling.style.display='flex'" onended="if(!${m.isUploading}) this.nextElementSibling.style.display='flex'" onloadedmetadata="let s=Math.floor(this.duration%60);let m=Math.floor(this.duration/60); this.parentElement.querySelector('.lc-vid-duration').innerText=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;"></video>
+                        <video src="${m.filePath}" style="width: 100%; max-height: 250px; object-fit: cover; display: block; background: #000; cursor: pointer;" preload="metadata" onclick="this.paused ? this.play() : this.pause()" onplay="window.lcPauseAllMedia(this); if(!${m.isUploading}) this.nextElementSibling.style.display='none'" onpause="if(!${m.isUploading}) this.nextElementSibling.style.display='flex'" onended="if(!${m.isUploading}) this.nextElementSibling.style.display='flex'" onloadedmetadata="let s=Math.floor(this.duration%60);let m=Math.floor(this.duration/60); this.parentElement.querySelector('.lc-vid-duration').innerText=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;"></video>
                         ${m.isUploading ? '' : `
                         <div onclick="this.previousElementSibling.play()" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 44px; height: 44px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white;">
                             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" style="margin-left: 3px;"><path d="M8 5v14l11-7z"/></svg>
