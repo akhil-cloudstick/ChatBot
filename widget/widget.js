@@ -75,12 +75,12 @@
     .lc-message.admin { align-items: flex-start; }
     .lc-msg-meta { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
     .lc-message.admin .lc-msg-meta { margin-left: 36px; }
-    .lc-msg-row { display: flex; gap: 8px; align-items: flex-end; max-width: 75%; box-sizing: border-box; }
+    .lc-msg-row { display: flex; gap: 8px; align-items: flex-end; max-width: 100%; box-sizing: border-box; }
     .lc-message.visitor .lc-msg-row { flex-direction: row-reverse; }
     .lc-msg-bubble { padding: 8px 14px; font-size: 14px; line-height: 1.4; box-shadow: 0 1px 2px rgba(0,0,0,0.1); word-break: break-word; min-width: 0; }
     .lc-message.visitor .lc-msg-bubble { background: #3b82f6; color: white; }
     .lc-message.admin .lc-msg-bubble { background: white; color: #1e293b; }
-    .lc-message.has-file .lc-msg-bubble { padding: 4px; }
+    .lc-message.has-file .lc-msg-bubble { padding: 4px; width: 260px; max-width: 100%; box-sizing: border-box; flex-shrink: 0; }
     
     .lc-message.single .lc-msg-bubble { border-radius: 20px; }
     .lc-message.visitor.group-first .lc-msg-bubble { border-radius: 20px 20px 4px 20px; }
