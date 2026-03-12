@@ -66,6 +66,11 @@
     .lc-chat-view { display: none; flex-direction: column; height: 100%; position: relative; }
     .lc-messages { flex: 1; padding: 20px 10px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: none; -ms-overflow-style: none; }
     .lc-messages::-webkit-scrollbar { display: none; }
+    
+    .lc-drag-overlay { position: absolute; inset: 0; background: rgba(59, 130, 246, 0.08); border: 2px dashed #3b82f6; border-radius: 16px; display: none; align-items: center; justify-content: center; z-index: 1000; pointer-events: none; box-sizing: border-box; }
+    .lc-drag-overlay.active { display: flex; animation: fadeIn 0.2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+    .lc-drag-text { background: white; padding: 12px 24px; border-radius: 30px; box-shadow: 0 10px 25px rgba(59, 130, 246, 0.2); color: #3b82f6; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
     .lc-scroll-down { position: absolute; bottom: 85px; right: 20px; width: 36px; height: 36px; background: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: none; align-items: center; justify-content: center; cursor: pointer; color: #3b82f6; border: 1px solid #e2e8f0; z-index: 10; transition: all 0.2s; }
     .lc-scroll-down:hover { background: #f8fafc; transform: translateY(-2px); }
     .lc-scroll-down svg { width: 20px; height: 20px; fill: currentColor; }
@@ -114,9 +119,25 @@
     .lc-message.group-first .lc-msg-time, .lc-message.group-middle .lc-msg-time { opacity: 0; pointer-events: none; }
     
     .lc-input-area { padding: 15px; background: white; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; align-items: flex-end; position: relative; }
-    .lc-attach-btn { background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0 0 9px 0; color: #64748b; transition: color 0.2s; }
-    .lc-attach-btn:hover { color: #3b82f6; }
-    .lc-attach-btn svg { width: 22px; height: 22px; fill: currentColor; }
+    .lc-plus-btn { background: #f1f5f9; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; color: #64748b; transition: all 0.2s; flex-shrink: 0; margin-bottom: 3px; }
+    .lc-plus-btn:hover { background: #e2e8f0; color: #3b82f6; transform: rotate(90deg); }
+    .lc-plus-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+    
+    .lc-plus-menu { position: absolute; bottom: 65px; left: 15px; background: white; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); border: 1px solid #e2e8f0; display: none; flex-direction: column; overflow: hidden; z-index: 100; min-width: 150px; }
+    .lc-plus-menu.open { display: flex; animation: slideUp 0.2s ease-out; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .lc-menu-item { padding: 12px 16px; font-size: 13px; font-weight: 500; color: #475569; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s; }
+    .lc-menu-item:hover { background: #f8fafc; color: #3b82f6; }
+    .lc-menu-item svg { width: 18px; height: 18px; }
+
+    .lc-recording-overlay { position: absolute; inset: 0; background: white; display: none; align-items: center; padding: 0 15px; z-index: 10; gap: 12px; }
+    .lc-recording-overlay.active { display: flex; }
+    .lc-rec-dot { width: 10px; height: 10px; background: #ef4444; border-radius: 50%; animation: pulse 1s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    .lc-rec-time { font-family: monospace; font-size: 14px; font-weight: 600; color: #1e293b; flex: 1; }
+    .lc-rec-cancel { color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .lc-rec-send { background: #3b82f6; color: white; border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
     .lc-input { flex: 1; border: 1px solid #cbd5e1; border-radius: 20px; padding: 10px 15px; outline: none; font-size: 14px; background: white; resize: none; min-height: 40px; max-height: 120px; overflow-y: auto; box-sizing: border-box; font-family: inherit; line-height: 1.4; scrollbar-width: none; }
     .lc-input::-webkit-scrollbar { display: none; }
     .lc-send { background: #3b82f6; color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -149,6 +170,12 @@
         <div class="lc-badge" id="lc-unread-badge" style="display:none;">0</div>
     </div>
     <div class="lc-widget-window" id="lc-window">
+        <div class="lc-drag-overlay" id="lc-drag-overlay">
+            <div class="lc-drag-text">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                Drop to Upload Files
+            </div>
+        </div>
         <div class="lc-header">
             <div class="lc-header-info">
                 <div class="lc-header-text">
@@ -197,12 +224,31 @@
                 </div>
                 <div id="lc-file-preview-area" style="display:none; padding: 10px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; position: relative; width: 100%; box-sizing: border-box;"></div>
                 <div class="lc-input-area">
-                    <button class="lc-attach-btn" id="lc-attach-btn" title="Attach file">
-                        <svg viewBox="0 0 24 24"><path d="M21.58 12.09l-9.37 9.37c-2.83 2.83-7.42 2.83-10.25 0-2.83-2.83-2.83-7.42 0-10.25l9.37-9.37c1.88-1.88 4.93-1.88 6.81 0 1.88 1.88 1.88 4.93 0 6.81l-8.66 8.66c-.94.94-2.46.94-3.4 0-.94-.94-.94-2.46 0-3.4l7.25-7.25 1.41 1.41-7.25 7.25c-.16.16-.16.42 0 .58.16.16.42.16.58 0l8.66-8.66c1.1-1.1 1.1-2.89 0-3.99-1.1-1.1-2.89-1.1-3.99 0l-9.37 9.37c-2.05 2.05-2.05 5.38 0 7.43 2.05 2.05 5.38 2.05 7.43 0l9.37-9.37-1.41-1.41z"/></svg>
+                    <div class="lc-plus-menu" id="lc-plus-menu">
+                        <div class="lc-menu-item" id="lc-menu-attach">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2.12 2.12 0 1 1-3-3l9.19-9.19"></path></svg>
+                            Attach File
+                        </div>
+                        <div class="lc-menu-item" id="lc-menu-record">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                            Record Audio
+                        </div>
+                    </div>
+                    <button class="lc-plus-btn" id="lc-plus-btn" title="Add">
+                        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     </button>
                     <input type="file" id="lc-file-input" multiple style="display:none;">
                     <textarea class="lc-input" id="lc-input" placeholder="Type message..." rows="1"></textarea>
                     <button class="lc-send" id="lc-send-btn">➤</button>
+                    
+                    <div class="lc-recording-overlay" id="lc-recording-overlay">
+                        <div class="lc-rec-dot"></div>
+                        <div class="lc-rec-time" id="lc-rec-time">00:00</div>
+                        <div class="lc-rec-cancel" id="lc-rec-cancel">Cancel</div>
+                        <button class="lc-rec-send" id="lc-rec-stop-send">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -648,9 +694,122 @@
         if (this.value === '') this.style.height = '40px';
     });
     
-    document.getElementById('lc-attach-btn').addEventListener('click', () => {
-        document.getElementById('lc-file-input').click();
+    const plusBtn = document.getElementById('lc-plus-btn');
+    const plusMenu = document.getElementById('lc-plus-menu');
+    
+    plusBtn.addEventListener('click', (e) => {
+        plusMenu.classList.toggle('open');
+        e.stopPropagation();
     });
+
+    document.addEventListener('click', () => {
+        plusMenu.classList.remove('open');
+    });
+
+    document.getElementById('lc-menu-attach').addEventListener('click', () => {
+        document.getElementById('lc-file-input').click();
+        plusMenu.classList.remove('open');
+    });
+
+    // Recording Logic
+    let mediaRecorder;
+    let audioChunks = [];
+    let recordInterval;
+    let recStartTime;
+
+    document.getElementById('lc-menu-record').addEventListener('click', startRecording);
+    document.getElementById('lc-rec-cancel').addEventListener('click', cancelRecording);
+    document.getElementById('lc-rec-stop-send').addEventListener('click', stopAndSendRecording);
+
+    async function startRecording() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("Microphone access is not supported in this browser or environment (requires HTTPS or localhost).");
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // Try supported types
+            const mimeType = MediaRecorder.isTypeSupported('audio/mpeg') ? 'audio/mpeg' : 
+                            MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 
+                            MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' : '';
+            
+            mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                if (audioChunks.length > 0 && !isRecordingCanceled) {
+                    const finalMime = mediaRecorder.mimeType || 'audio/mpeg';
+                    const extension = finalMime.split('/')[1].split(';')[0] || 'mp3';
+                    const audioBlob = new Blob(audioChunks, { type: finalMime });
+                    
+                    const file = new File([audioBlob], `voice_record_${Date.now()}.${extension}`, { type: finalMime });
+                    // Directly send as a file
+                    selectedFilesInfo = [{
+                        id: Math.random().toString(36).substr(2, 9),
+                        file: file,
+                        status: 'pending',
+                        msg: ''
+                    }];
+                    sendMsg();
+                }
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            let isRecordingCanceled = false;
+            window.cancelRecTask = () => { isRecordingCanceled = true; };
+
+            mediaRecorder.start();
+            plusMenu.classList.remove('open');
+            document.getElementById('lc-recording-overlay').classList.add('active');
+            
+            recStartTime = Date.now();
+            updateRecTime();
+            recordInterval = setInterval(updateRecTime, 1000);
+
+        } catch (err) {
+            console.error("Recording error details:", err);
+            let userMsg = "Could not access microphone.";
+            if (err.name === 'NotAllowedError') userMsg = "Microphone permission was denied.";
+            else if (err.name === 'NotFoundError') userMsg = "No microphone found on this device.";
+            else if (err.name === 'SecurityError') userMsg = "Microphone access is blocked (Secure Context required).";
+            
+            alert(userMsg);
+            finishRecordingUI();
+        }
+    }
+
+    function updateRecTime() {
+        const elapsed = Math.floor((Date.now() - recStartTime) / 1000);
+        const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+        const secs = (elapsed % 60).toString().padStart(2, '0');
+        document.getElementById('lc-rec-time').textContent = `${mins}:${secs}`;
+    }
+
+    function cancelRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            if (window.cancelRecTask) window.cancelRecTask();
+            mediaRecorder.stop();
+        }
+        finishRecordingUI();
+    }
+
+    function stopAndSendRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        finishRecordingUI();
+    }
+
+    function finishRecordingUI() {
+        document.getElementById('lc-recording-overlay').classList.remove('active');
+        clearInterval(recordInterval);
+    }
     let selectedFilesInfo = []; // array of { id, file, status, msg }
 
     function renderFilePreview() {
@@ -799,15 +958,15 @@
         }
     }
 
-    document.getElementById('lc-file-input').addEventListener('change', (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length === 0) return;
+    function handleFiles(files) {
+        const fileList = Array.from(files);
+        if (fileList.length === 0) return;
         
-        if (selectedFilesInfo.length + files.length > 5) {
+        if (selectedFilesInfo.length + fileList.length > 5) {
             alert("Maximum 5 files allowed limit.");
         }
         
-        const allowed = files.slice(0, 5 - selectedFilesInfo.length);
+        const allowed = fileList.slice(0, 5 - selectedFilesInfo.length);
         allowed.forEach(f => {
             selectedFilesInfo.push({
                 id: Math.random().toString(36).substr(2, 9),
@@ -817,8 +976,52 @@
             });
         });
         
-        e.target.value = ''; // Reset input to allow adding the same file again
         renderFilePreview();
+    }
+
+    document.getElementById('lc-file-input').addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+        e.target.value = ''; // Reset input to allow adding the same file again
+    });
+
+    const winEl = document.getElementById('lc-window');
+    const dragOverlay = document.getElementById('lc-drag-overlay');
+    let dragCounter = 0;
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        winEl.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
+    });
+
+    winEl.addEventListener('dragenter', (e) => {
+        dragCounter++;
+        if (dragCounter === 1) {
+            dragOverlay.classList.add('active');
+        }
+    });
+
+    winEl.addEventListener('dragleave', (e) => {
+        dragCounter--;
+        if (dragCounter === 0) {
+            dragOverlay.classList.remove('active');
+        }
+    });
+
+    winEl.addEventListener('drop', (e) => {
+        dragCounter = 0;
+        dragOverlay.classList.remove('active');
+        if (e.dataTransfer && e.dataTransfer.files) {
+            handleFiles(e.dataTransfer.files);
+        }
+    }, false);
+
+    inputEl.addEventListener('paste', (e) => {
+        if (e.clipboardData && e.clipboardData.files.length > 0) {
+            e.preventDefault();
+            handleFiles(e.clipboardData.files);
+        }
     });
 
     async function doUploadFile(fObj, tempId, fileUrl) {
