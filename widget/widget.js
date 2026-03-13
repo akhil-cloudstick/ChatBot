@@ -133,8 +133,13 @@
     .lc-recording-overlay { position: absolute; inset: 0; background: white; display: none; align-items: center; padding: 0 15px; z-index: 10; gap: 12px; }
     .lc-recording-overlay.active { display: flex; }
     .lc-rec-dot { width: 10px; height: 10px; background: #ef4444; border-radius: 50%; animation: pulse 1s infinite; }
+    .lc-rec-dot.paused { animation: none; opacity: 0.5; }
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-    .lc-rec-time { font-family: monospace; font-size: 14px; font-weight: 600; color: #1e293b; flex: 1; }
+    .lc-rec-time { font-family: monospace; font-size: 14px; font-weight: 600; color: #1e293b; }
+    .lc-rec-visualizer { flex: 1; height: 24px; margin: 0 10px; display: block; min-width: 50px; }
+    .lc-rec-pause { color: #3b82f6; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; }
+    .lc-rec-pause svg { width: 18px; height: 18px; }
+    .lc-rec-pause:hover { color: #2563eb; }
     .lc-rec-cancel { color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer; }
     .lc-rec-send { background: #3b82f6; color: white; border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
@@ -158,6 +163,25 @@
     .lc-full-btn { width: 100%; margin: 0; }
     .lc-skip-btn { background: transparent; color: #64748b; border: none; font-weight: 600; font-size: 0.9rem; cursor: pointer; padding: 10px; transition: color 0.2s; }
     .lc-skip-btn:hover { color: #0f172a; text-decoration: underline; }
+    .lc-toast-container {
+        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        z-index: 10001; pointer-events: none; padding: 0 40px; box-sizing: border-box;
+    }
+    .lc-toast {
+        background: rgba(15, 23, 42, 0.95); color: white; padding: 14px 24px;
+        border-radius: 16px; font-size: 14px; font-weight: 600; text-align: center;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.2); backdrop-filter: blur(12px);
+        animation: lc-toast-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        pointer-events: auto; max-width: 100%; border: 1px solid rgba(255,255,255,0.1);
+        margin-bottom: 10px;
+    }
+    @keyframes lc-toast-in {
+        from { opacity: 0; transform: translateY(20px) scale(0.9); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .lc-toast.error { background: rgba(239, 68, 68, 0.95); }
+    .lc-toast.success { background: rgba(34, 197, 94, 0.95); }
     `;
     document.head.appendChild(style);
 
@@ -242,8 +266,12 @@
                     <button class="lc-send" id="lc-send-btn">➤</button>
                     
                     <div class="lc-recording-overlay" id="lc-recording-overlay">
-                        <div class="lc-rec-dot"></div>
+                        <div class="lc-rec-dot" id="lc-rec-dot"></div>
                         <div class="lc-rec-time" id="lc-rec-time">00:00</div>
+                        <canvas id="lc-rec-canvas" class="lc-rec-visualizer"></canvas>
+                        <div class="lc-rec-pause" id="lc-rec-pause" title="Pause/Resume">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                        </div>
                         <div class="lc-rec-cancel" id="lc-rec-cancel">Cancel</div>
                         <button class="lc-rec-send" id="lc-rec-stop-send">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
@@ -273,7 +301,8 @@
                 </div>
             </div>
         </div>
-    </div>`;
+    </div>`
+;
     document.body.appendChild(root);
 
     // State
@@ -287,6 +316,74 @@
     let chatLimit = 20;
     let hasMoreChats = true;
     let isLoadingChats = false;
+
+    function showToast(msg, type = 'info', onConfirm = null, onCancel = null) {
+        let overlay = document.getElementById('lc-dialog-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'lc-dialog-overlay';
+            overlay.style.cssText = 'position: absolute; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(2px); z-index: 10002; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s;';
+            document.getElementById('lc-window').appendChild(overlay);
+        }
+        
+        const dialog = document.createElement('div');
+        dialog.style.cssText = 'background: white; border-radius: 16px; padding: 24px; width: 85%; max-width: 300px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); transform: scale(0.95); transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; gap: 16px; text-align: center; box-sizing: border-box;';
+
+        let iconSvg = '';
+        if (type === 'error') {
+            iconSvg = '<div style="width: 48px; height: 48px; border-radius: 50%; background: #fee2e2; display: flex; align-items: center; justify-content: center; margin: 0 auto; flex-shrink:0;"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ef4444" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div>';
+        } else if (type === 'success') {
+            iconSvg = '<div style="width: 48px; height: 48px; border-radius: 50%; background: #dcfce7; display: flex; align-items: center; justify-content: center; margin: 0 auto; flex-shrink:0;"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#22c55e" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>';
+        } else if (type === 'confirm') {
+            iconSvg = '<div style="width: 48px; height: 48px; border-radius: 50%; background: #fef3c7; display: flex; align-items: center; justify-content: center; margin: 0 auto; flex-shrink:0;"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#f59e0b" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>';
+        } else {
+            iconSvg = '<div style="width: 48px; height: 48px; border-radius: 50%; background: #eff6ff; display: flex; align-items: center; justify-content: center; margin: 0 auto; flex-shrink:0;"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#3b82f6" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>';
+        }
+
+        const isConfirm = (type === 'confirm');
+
+        dialog.innerHTML = `
+            ${iconSvg}
+            <div style="font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.4;">${msg}</div>
+            <div style="display: flex; gap: 10px; margin-top: 8px; justify-content: center; width: 100%;">
+                ${isConfirm ? `<button id="lc-dialog-cancel" style="flex: 1; padding: 10px 0; border: 1px solid #e2e8f0; border-radius: 8px; background: white; color: #64748b; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s;">Cancel</button>` : ''}
+                <button id="lc-dialog-ok" style="flex: 1; padding: 10px 0; border: none; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2);">OK</button>
+            </div>
+        `;
+
+        overlay.innerHTML = '';
+        overlay.appendChild(dialog);
+        overlay.style.display = 'flex';
+        void overlay.offsetWidth;
+        overlay.style.opacity = '1';
+        dialog.style.transform = 'scale(1)';
+
+        const closeDialog = () => {
+            overlay.style.opacity = '0';
+            dialog.style.transform = 'scale(0.95)';
+            setTimeout(() => { if(overlay) overlay.style.display = 'none'; }, 200);
+        };
+
+        const btnOk = document.getElementById('lc-dialog-ok');
+        const btnCancel = document.getElementById('lc-dialog-cancel');
+
+        if (btnOk) {
+            btnOk.onmouseover = () => btnOk.style.background = '#2563eb';
+            btnOk.onmouseout = () => btnOk.style.background = '#3b82f6';
+            btnOk.onclick = () => {
+                closeDialog();
+                if (typeof onConfirm === 'function') onConfirm();
+            };
+        }
+        if (btnCancel) {
+            btnCancel.onmouseover = () => { btnCancel.style.background = '#f8fafc'; btnCancel.style.color = '#0f172a'; };
+            btnCancel.onmouseout = () => { btnCancel.style.background = 'white'; btnCancel.style.color = '#64748b'; };
+            btnCancel.onclick = () => {
+                closeDialog();
+                if (typeof onCancel === 'function') onCancel();
+            };
+        }
+    }
 
     function updateBadge() {
         const badge = document.getElementById('lc-unread-badge');
@@ -435,6 +532,7 @@
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'notification') {
+                    showToast(data.title || "Notification", 'info');
                     console.log("Notification:", data.title);
                 } else if (data.type === 'message' || data.type === 'response') {
                     const msg = data.data;
@@ -610,7 +708,7 @@
         const dept = document.getElementById('lc-dept').value;
         const desc = document.getElementById('lc-desc').value;
 
-        if (!name || !email) return alert('Name and Email required');
+        if (!name || !email) return showToast('Name and Email required', 'error');
 
         const websiteId = localStorage.getItem('website_id') || WEBSITE_ID || "d894d558-a671-473a-a1b6-a5b11176b8e5";
 
@@ -669,12 +767,12 @@
                     setView('chat');
                     handleChatStatus(status);
                 } else {
-                    alert("Failed to start chat.");
+                    showToast("Failed to start chat.", 'error');
                     setView('form');
                 }
             }).catch(err => {
                 console.error("Start chat error:", err);
-                alert("Error starting chat. Please check the console for details.");
+                showToast("Error starting chat.", 'error');
                 setView('form');
             });
     });
@@ -716,20 +814,35 @@
     let audioChunks = [];
     let recordInterval;
     let recStartTime;
+    let recPausedTime = 0;
+    let lastPauseStart = 0;
+    
+    let audioContext;
+    let analyser;
+    let dataArray;
+    let animationId;
 
     document.getElementById('lc-menu-record').addEventListener('click', startRecording);
     document.getElementById('lc-rec-cancel').addEventListener('click', cancelRecording);
     document.getElementById('lc-rec-stop-send').addEventListener('click', stopAndSendRecording);
+    document.getElementById('lc-rec-pause').addEventListener('click', togglePauseRecording);
 
     async function startRecording() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            alert("Microphone access is not supported in this browser or environment (requires HTTPS or localhost).");
+            showToast("Microphone access is not supported.", 'error');
             return;
         }
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 128; 
+            source.connect(analyser);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+
             // Try supported types
             const mimeType = MediaRecorder.isTypeSupported('audio/mpeg') ? 'audio/mpeg' : 
                             MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 
@@ -745,7 +858,7 @@
             mediaRecorder.onstop = async () => {
                 if (audioChunks.length > 0 && !isRecordingCanceled) {
                     const finalMime = mediaRecorder.mimeType || 'audio/mpeg';
-                    const extension = finalMime.split('/')[1].split(';')[0] || 'mp3';
+                    const extension = 'mp3';
                     const audioBlob = new Blob(audioChunks, { type: finalMime });
                     
                     const file = new File([audioBlob], `voice_record_${Date.now()}.${extension}`, { type: finalMime });
@@ -769,8 +882,13 @@
             document.getElementById('lc-recording-overlay').classList.add('active');
             
             recStartTime = Date.now();
+            recPausedTime = 0;
+            document.getElementById('lc-rec-pause').innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            document.getElementById('lc-rec-dot').classList.remove('paused');
             updateRecTime();
             recordInterval = setInterval(updateRecTime, 1000);
+            
+            drawVisualizer();
 
         } catch (err) {
             console.error("Recording error details:", err);
@@ -779,16 +897,43 @@
             else if (err.name === 'NotFoundError') userMsg = "No microphone found on this device.";
             else if (err.name === 'SecurityError') userMsg = "Microphone access is blocked (Secure Context required).";
             
-            alert(userMsg);
+            showToast(userMsg, 'error');
             finishRecordingUI();
         }
     }
 
     function updateRecTime() {
-        const elapsed = Math.floor((Date.now() - recStartTime) / 1000);
+        let currentElapsed = 0;
+        if (mediaRecorder && mediaRecorder.state === 'paused') {
+            currentElapsed = Math.floor((lastPauseStart - recStartTime - recPausedTime) / 1000);
+        } else {
+            currentElapsed = Math.floor((Date.now() - recStartTime - recPausedTime) / 1000);
+        }
+        const elapsed = Math.max(0, currentElapsed);
         const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
         const secs = (elapsed % 60).toString().padStart(2, '0');
         document.getElementById('lc-rec-time').textContent = `${mins}:${secs}`;
+    }
+
+    function togglePauseRecording() {
+        if (!mediaRecorder) return;
+        
+        const pauseBtn = document.getElementById('lc-rec-pause');
+        const recDot = document.getElementById('lc-rec-dot');
+        
+        if (mediaRecorder.state === 'recording') {
+            mediaRecorder.pause();
+            lastPauseStart = Date.now();
+            pauseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+            recDot.classList.add('paused');
+            updateRecTime();
+        } else if (mediaRecorder.state === 'paused') {
+            mediaRecorder.resume();
+            recPausedTime += (Date.now() - lastPauseStart);
+            pauseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            recDot.classList.remove('paused');
+            updateRecTime();
+        }
     }
 
     function cancelRecording() {
@@ -809,7 +954,58 @@
     function finishRecordingUI() {
         document.getElementById('lc-recording-overlay').classList.remove('active');
         clearInterval(recordInterval);
+        if (animationId) cancelAnimationFrame(animationId);
+        if (audioContext && audioContext.state !== 'closed') audioContext.close();
     }
+
+    function drawVisualizer() {
+        const canvas = document.getElementById('lc-rec-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width = canvas.offsetWidth || 100;
+        const height = canvas.height = canvas.offsetHeight || 24;
+
+        function draw() {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                ctx.clearRect(0, 0, width, height);
+                return;
+            }
+            animationId = requestAnimationFrame(draw);
+            
+            if (mediaRecorder.state === 'paused') {
+                return;
+            }
+
+            if (analyser) analyser.getByteFrequencyData(dataArray);
+
+            ctx.clearRect(0, 0, width, height);
+            
+            const totalBars = Math.min(dataArray.length, 50); // limit number of bars
+            const barWidth = width / totalBars;
+            let barHeight;
+            let x = 0;
+
+            for(let i = 0; i < totalBars; i++) {
+                // smooth out the curve a bit by pushing the lower frequencies
+                barHeight = (dataArray[i] / 255) * height;
+                if (barHeight < 2) barHeight = 2;
+
+                ctx.fillStyle = '#64748b'; // match the dark grey lines
+                ctx.beginPath();
+                const actualWidth = Math.max(2, barWidth - 2); // add gaps between lines
+                if (ctx.roundRect) {
+                    ctx.roundRect(x + (barWidth - actualWidth)/2, height / 2 - barHeight / 2, actualWidth, barHeight, 2);
+                } else {
+                    ctx.rect(x + (barWidth - actualWidth)/2, height / 2 - barHeight / 2, actualWidth, barHeight);
+                }
+                ctx.fill();
+
+                x += barWidth;
+            }
+        }
+        draw();
+    }
+
     let selectedFilesInfo = []; // array of { id, file, status, msg }
 
     function renderFilePreview() {
@@ -838,7 +1034,12 @@
             // Modern styling
             chip.style.cssText = 'position:relative; display:flex; align-items:center; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:18px; padding:6px 10px; font-size:12.5px; max-width:115px; flex-shrink:0; box-shadow:0 1px 2px rgba(0,0,0,0.02); transition:all 0.2s;';
             
-            const iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#64748b" style="margin-right:6px; flex-shrink:0;"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>';
+            const isAud = fObj.file && fObj.file.type && fObj.file.type.startsWith('audio/');
+            
+            const docIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#64748b" style="margin-right:6px; flex-shrink:0;"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>';
+            const audIcon = '<div style="display:flex; align-items:center; gap:2px; margin-right:6px; height:12px;"><div style="width:2px;height:40%;background:#64748b;border-radius:1px;"></div><div style="width:2px;height:80%;background:#64748b;border-radius:1px;"></div><div style="width:2px;height:100%;background:#64748b;border-radius:1px;"></div><div style="width:2px;height:60%;background:#64748b;border-radius:1px;"></div></div>';
+            
+            const iconSvg = isAud ? audIcon : docIcon;
             const icon = fObj.status === 'failed' ? '<span style="margin-right:6px;font-size:14px;">⚠️</span>' : (fObj.status === 'uploading' ? '<div class="lc-loader" style="width:14px;height:14px;border:2px solid #3b82f6;border-top:2px solid transparent;border-radius:50%;animation:spin 1s linear infinite;margin-right:6px;flex-shrink:0;"></div>' : iconSvg);
             
             let nameCss = 'white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500; color:#334155; font-family:sans-serif; width:100%; display:block;';
@@ -963,7 +1164,7 @@
         if (fileList.length === 0) return;
         
         if (selectedFilesInfo.length + fileList.length > 5) {
-            alert("Maximum 5 files allowed limit.");
+            showToast("Maximum 5 files allowed.", 'error');
         }
         
         const allowed = fileList.slice(0, 5 - selectedFilesInfo.length);
@@ -1222,8 +1423,8 @@
         let fileHtml = '';
         if (m.filePath) {
             const isImg = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(m.filePath);
-            const isAudio = /\.(mp3|wav|ogg|aac|m4a)(\?.*)?$/i.test(m.filePath);
-            const isVideo = /\.(mp4|webm|avi|mov)(\?.*)?$/i.test(m.filePath);
+            const isAudio = /\.(mp3|wav|ogg|aac|m4a|weba)(\?.*)?$/i.test(m.filePath) || /voice_record_/i.test(m.filePath);
+            const isVideo = /\.(mp4|webm|avi|mov)(\?.*)?$/i.test(m.filePath) && !isAudio;
 
             const fileName = m.fileNameRaw || (m.filePath ? m.filePath.split('/').pop().split('?')[0] : 'Document');
             if (isImg) {
@@ -1250,28 +1451,56 @@
             } else if (isAudio) {
                 const isVisitor = m.sender === 'visitor';
                 const iconBg = isVisitor ? 'rgba(255,255,255,0.2)' : '#eff6ff';
-                const iconColor = isVisitor ? '#ffffff' : '#3b82f6';
-                const trackBg = isVisitor ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.15)';
+                const iconColor = isVisitor ? '#ffffff' : '#334155';
+                const trackBg = isVisitor ? 'rgba(255,255,255,0.4)' : '#cbd5e1';
                 const playPath = "M8 5v14l11-7z";
                 const pausePath = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";
-                const heights = [30, 50, 40, 70, 90, 60, 40, 30, 50, 80, 40, 60, 30, 80, 50, 60, 80, 90, 60, 40, 30, 50, 80, 40, 60, 30, 70, 40, 50, 30];
-                const baseBars = heights.map(h => `<div style="flex: 1; background: ${trackBg}; height: ${h}%; border-radius: 2px;"></div>`).join('');
-                const activeBars = heights.map(h => `<div style="flex: 1; background: ${iconColor}; height: ${h}%; border-radius: 2px;"></div>`).join('');
+                const waveId = 'lc-wave-' + (m.id || Math.random().toString(36).substr(2, 9));
+                
+                // Generate a unique fallback wave pattern based on file string to prevent CORS fetch errors entirely
+                const seedStr = m.id + '' || m.filePath || Date.now().toString();
+                let seed = 0; 
+                for(let i=0; i<seedStr.length; i++) {
+                    seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+                    seed = seed & seed; // Convert to 32bit int
+                }
+                seed = Math.abs(seed);
+                
+                const numBars = 38;
+                const heights = new Array(numBars).fill(0).map((_, i) => {
+                    const pct = i / (numBars - 1);
+                    const env = Math.sin(pct * Math.PI); // Envelope to taper ends (0 -> 1 -> 0)
+                    
+                    const noise = Math.abs(Math.sin(i * 13.73 + seed) * 10000 % 1);
+                    const wave = Math.sin(pct * 15 + seed * 0.1) * 0.5 + 0.5;
+                    
+                    const combined = wave * 0.3 + noise * 0.7;
+                    let h = 10 + (combined * 90 * Math.pow(env, 0.7));
+                    return Math.max(12, Math.min(100, Math.round(h)));
+                });
+                
+                const baseBars = heights.map(h => `<div style="width: 2.5px; flex-shrink: 0; background: ${trackBg}; height: ${h}%; border-radius: 10px; transition: height 0.4s ease;"></div>`).join('');
+                const activeBars = heights.map(h => `<div style="width: 2.5px; flex-shrink: 0; background: ${iconColor}; height: ${h}%; border-radius: 10px; transition: height 0.4s ease;"></div>`).join('');
 
                 fileHtml = `
                     <div style="display: flex; align-items: center; gap: 12px; padding: 4px;">
-                        <div onclick="var a=this.nextElementSibling; var p=this.querySelector('path'); if(a.paused){a.play(); p.setAttribute('d', '${pausePath}');}else{a.pause(); p.setAttribute('d', '${playPath}');}" style="cursor: pointer; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: ${iconBg}; color: ${iconColor}; flex-shrink: 0; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                        <div onclick="var a=this.nextElementSibling; var p=this.querySelector('path'); if(a.paused){var pr=a.play(); if(pr!==undefined){pr.then(()=>p.setAttribute('d', '${pausePath}')).catch(e=>console.log(e));}else{p.setAttribute('d', '${pausePath}');}}else{a.pause(); p.setAttribute('d', '${playPath}');}" style="cursor: pointer; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: ${iconBg}; color: ${iconColor}; flex-shrink: 0; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
                             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="${playPath}"/></svg>
                         </div>
-                        <audio src="${m.filePath}" style="display: none;" onplay="window.lcPauseAllMedia(this)" ontimeupdate="var p=(this.currentTime/this.duration)*100||0; this.nextElementSibling.lastElementChild.style.width=Math.min(p,100)+'%';" onended="this.previousElementSibling.querySelector('path').setAttribute('d', '${playPath}'); this.nextElementSibling.lastElementChild.style.width='0%';"></audio>
-                        <div style="width: 160px; height: 32px; position: relative; cursor: pointer;" onclick="var a=this.previousElementSibling; var r=this.getBoundingClientRect(); if(a.duration) a.currentTime=((event.clientX-r.left)/r.width)*a.duration;">
-                            <div style="position: absolute; width: 100%; height: 100%; display: flex; align-items: center; gap: 2px; pointer-events: none;">
-                                ${baseBars}
-                            </div>
-                            <div style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; overflow: hidden; pointer-events: none;">
-                                <div style="width: 160px; height: 100%; display: flex; align-items: center; gap: 2px;">
-                                    ${activeBars}
+                        <audio preload="metadata" src="${m.filePath}" style="display: none;" onplay="window.lcPauseAllMedia(this)" ontimeupdate="var p=(this.currentTime/this.duration)*100||0; this.nextElementSibling.querySelector('.lc-audio-active-track').style.width=Math.min(p,100)+'%'; var t=this.nextElementSibling.querySelector('.lc-audio-current-time'); if(t && this.duration){var rem=this.duration-this.currentTime; var s=Math.floor(rem%60); var mt=Math.floor(rem/60); t.innerText=(mt<10?'0':'')+mt+':'+(s<10?'0':'')+s;}" onended="this.previousElementSibling.querySelector('path').setAttribute('d', '${playPath}'); this.nextElementSibling.querySelector('.lc-audio-active-track').style.width='0%'; var t=this.nextElementSibling.querySelector('.lc-audio-current-time'); if(t && this.duration){var s=Math.floor(this.duration%60); var mt=Math.floor(this.duration/60); t.innerText=(mt<10?'0':'')+mt+':'+(s<10?'0':'')+s;}" onloadedmetadata="var t=this.nextElementSibling.querySelector('.lc-audio-current-time'); if(t && this.duration){var s=Math.floor(this.duration%60); var mt=Math.floor(this.duration/60); t.innerText=(mt<10?'0':'')+mt+':'+(s<10?'0':'')+s;}"></audio>
+                        <div style="display: flex; flex-direction: column; width: 170px; justify-content: center; gap: 4px;">
+                            <div id="${waveId}" style="width: 100%; height: 32px; position: relative; cursor: pointer;" onclick="var a=this.parentElement.previousElementSibling; var r=this.getBoundingClientRect(); if(a.duration) a.currentTime=((event.clientX-r.left)/r.width)*a.duration;">
+                                <div style="position: absolute; width: 100%; height: 100%; display: flex; align-items: center; justify-content: space-between; pointer-events: none;">
+                                    ${baseBars}
                                 </div>
+                                <div class="lc-audio-active-track" style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; overflow: hidden; pointer-events: none;">
+                                    <div style="width: 170px; height: 100%; display: flex; align-items: center; justify-content: space-between;">
+                                        ${activeBars}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: ${iconColor}; opacity: 0.8; font-weight: 500;">
+                                <span class="lc-audio-current-time">00:00</span>
                             </div>
                         </div>
                     </div>`;
@@ -1597,7 +1826,7 @@
 
     // End Chat
     document.getElementById('lc-end-chat').addEventListener('click', () => {
-        if (confirm('End this chat?')) {
+        showToast('End this chat?', 'confirm', () => {
             if (chatId) {
                 fetch(`http://localhost:8080/api/v1/client/chatbot/chat/${chatId}/status`, {
                     method: 'PATCH',
@@ -1620,7 +1849,7 @@
             chatId = null;
             document.getElementById('lc-messages').innerHTML = '';
             setView('feedback');
-        }
+        });
     });
 
     // Feedback
@@ -1632,7 +1861,7 @@
         });
     });
     document.getElementById('lc-submit-feedback').addEventListener('click', () => {
-        alert('Feedback Sent');
+        showToast('Feedback Sent', 'success');
         localStorage.removeItem('lc_data');
         localStorage.removeItem('lc_chat_id');
         window.location.reload();
@@ -1643,7 +1872,7 @@
         window.location.reload();
     });
     document.getElementById('lc-email-transcript').addEventListener('click', () => {
-        alert('Transcript request behavior to be implemented.');
+        showToast('Transcript request to be implemented.', 'info');
     });
 
     function logVisitorInfo() {
